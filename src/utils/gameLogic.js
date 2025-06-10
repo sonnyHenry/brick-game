@@ -69,9 +69,10 @@ export function generateTopRowBricks(round) {
   const bricks = [];
   const { BRICK } = GAME_CONFIG;
   
-  // 基于回合数决定新砖块的生命值范围，进一步加快增长速度
-  const minHealth = Math.max(1, round); // 每回合增加1生命值（从每2回合改为每回合）
-  const maxHealth = minHealth + 1; // 生命值范围为1
+  // 新的生命值逻辑：以3个回合为一个区间，每进入一个新区间，生命值范围整体提升
+  const healthIntervalIndex = Math.floor((round - 1) / 3);
+  const minHealth = healthIntervalIndex * 5 + 1;
+  const maxHealth = minHealth + 4;
   
   // 由于砖块和道具总是向下移动，顶行一定是空的，因此所有列都可用。
   const availableColumns = [];
@@ -85,10 +86,11 @@ export function generateTopRowBricks(round) {
     [availableColumns[i], availableColumns[j]] = [availableColumns[j], availableColumns[i]];
   }
   
-  // 确保至少生成一些砖块，但不超过可用位置
-  const minBricks = Math.min(3, availableColumns.length); // 至少生成3个砖块（如果有足够空间）
-  const maxBricks = Math.floor(availableColumns.length * 0.7); // 最多70%的可用位置
-  const brickCount = Math.max(minBricks, maxBricks);
+  // 随机化新砖块的数量，使其在40%到70%之间波动，且至少有1个
+  const minPercentage = 0.4;
+  const maxPercentage = 0.7;
+  const randomPercentage = Math.random() * (maxPercentage - minPercentage) + minPercentage;
+  const brickCount = Math.max(1, Math.floor(availableColumns.length * randomPercentage));
   
   console.log(`生成新砖块: 可用列=${availableColumns.length}, 生成数量=${brickCount}, 回合=${round}`);
   
@@ -256,33 +258,67 @@ export function movePowerUpsDown(powerUps) {
 /**
  * 在新生成的顶行砖块的空隙中生成新道具
  * @param {Array} newTopRowBricks - 新生成的顶行砖块数组
+ * @param {Array} existingBricks - 已经存在的砖块数组
  * @returns {Array} 新的道具数组
  */
-export function generateTopRowPowerUps(newTopRowBricks) {
+export function generateTopRowPowerUps(newTopRowBricks, existingBricks = []) {
   const { BRICK } = GAME_CONFIG;
   const newPowerUps = [];
-  
-  // 找出被新砖块占据的列
-  const occupiedCols = new Set(
-    newTopRowBricks.map(brick =>
-      Math.round((brick.x - BRICK.OFFSET_LEFT) / (BRICK.WIDTH + BRICK.PADDING))
-    )
-  );
 
-  // 遍历所有可能的列位置
+  // 1. 根据新砖块数量决定要生成的道具数量
+  const brickCount = newTopRowBricks.length;
+  const minBrickCount = 5; // 对应约40%的密度
+  const maxBrickCount = 9; // 对应约70%的密度
+  const minPowerUps = 1;   // 最少生成1个道具
+  const maxPowerUps = 3;   // 最多生成3个道具
+
+  let powerUpCount;
+  if (brickCount <= minBrickCount) {
+    powerUpCount = minPowerUps;
+  } else if (brickCount >= maxBrickCount) {
+    powerUpCount = maxPowerUps;
+  } else {
+    // 在最小和最大砖块数之间进行线性插值，并取整
+    const ratio = (brickCount - minBrickCount) / (maxBrickCount - minBrickCount);
+    powerUpCount = Math.round(minPowerUps + (maxPowerUps - minPowerUps) * ratio);
+  }
+  
+  // 2. 找出所有真正可用的空列
+  const occupiedCols = new Set();
+  const allBricks = [...newTopRowBricks, ...existingBricks];
+  allBricks.forEach(brick => {
+    // 只考虑屏幕上半部分的砖块
+    if (brick.y < GAME_CONFIG.CANVAS_HEIGHT / 2) {
+      const col = Math.round((brick.x - BRICK.OFFSET_LEFT) / (BRICK.WIDTH + BRICK.PADDING));
+      occupiedCols.add(col);
+    }
+  });
+
+  const availableColumns = [];
   for (let c = 0; c < BRICK.COLS; c++) {
-    // 如果该列是空的
     if (!occupiedCols.has(c)) {
-      // 按4%的概率在该空隙中生成一个道具（进一步降低概率）
-      if (Math.random() < GAME_CONFIG.POWERUP.SPAWN_CHANCE) {
-        const position = {
-          x: BRICK.OFFSET_LEFT + c * (BRICK.WIDTH + BRICK.PADDING) + BRICK.WIDTH / 2,
-          y: BRICK.OFFSET_TOP + BRICK.HEIGHT / 2,
-        };
-        newPowerUps.push(createPowerUp(position));
-      }
+      availableColumns.push(c);
     }
   }
+
+  // 3. 在可用的空列中随机选择位置来放置道具
+  // 打乱可用列数组
+  for (let i = availableColumns.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [availableColumns[i], availableColumns[j]] = [availableColumns[j], availableColumns[i]];
+  }
+  
+  // 取前N个位置来生成道具，N为计算出的道具数量和可用列数中的较小者
+  const finalPowerUpCount = Math.min(powerUpCount, availableColumns.length);
+  for (let i = 0; i < finalPowerUpCount; i++) {
+    const col = availableColumns[i];
+    const position = {
+      x: BRICK.OFFSET_LEFT + col * (BRICK.WIDTH + BRICK.PADDING) + BRICK.WIDTH / 2,
+      y: BRICK.OFFSET_TOP + BRICK.HEIGHT / 2,
+    };
+    newPowerUps.push(createPowerUp(position));
+  }
+
   return newPowerUps;
 }
 

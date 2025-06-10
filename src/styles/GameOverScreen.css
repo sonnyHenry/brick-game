@@ -1,0 +1,56 @@
+.score-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 20px;
+  width: 100%;
+  max-width: 300px;
+}
+
+.score-form input {
+  padding: 10px;
+  border-radius: 5px;
+  border: 1px solid #00ff00;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: #00ff00;
+  font-size: 16px;
+  text-align: center;
+}
+
+.score-form input::placeholder {
+  color: rgba(0, 255, 0, 0.5);
+}
+
+.score-form button {
+  padding: 10px 20px;
+  border-radius: 5px;
+  border: none;
+  background-color: #00ff00;
+  color: #000;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s, transform 0.2s;
+}
+
+.score-form button:hover {
+  background-color: #33ff33;
+  transform: scale(1.05);
+}
+
+.restart-button-gameover {
+  margin-top: 20px;
+  padding: 10px 20px;
+  border-radius: 5px;
+  border: 1px solid #ff4444;
+  background-color: transparent;
+  color: #ff4444;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.restart-button-gameover:hover {
+  background-color: #ff4444;
+  color: #000;
+} 

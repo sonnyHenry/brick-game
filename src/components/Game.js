@@ -2,11 +2,16 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Brick from './Brick';
 import Ball from './Ball';
 import PowerUp from './PowerUp';
+import GameOverScreen from './GameOverScreen';
+import Leaderboard from './Leaderboard';
 import { generateBricks, generateTopRowBricks, moveBricksDown, checkGameOver, generateInitialPowerUps, generateTopRowPowerUps, movePowerUpsDown, calculateLaunchVelocity, createBall, areAllBallsLanded, getLastLandedBallX, cleanupDestroyedBricks, getBrickColorByHealth } from '../utils/gameLogic';
 import { detectWallCollision, handleBallBounce, detectContinuousCollision, detectPowerUpCollision } from '../utils/collision';
 import { GAME_CONFIG, GAME_STATES, COLLISION_TYPES } from '../utils/constants';
 import { playSound, preloadSounds, enableAudio } from '../utils/audio';
+import { getScores, addScore } from '../utils/leaderboard';
 import '../styles/Game.css';
+
+const { SPEED: speedConfig } = GAME_CONFIG;
 
 const soundList = [
   { name: 'hit_low', src: '/sounds/hit_low.wav' },
@@ -28,15 +33,18 @@ const Game = () => {
   const [roundEndState, setRoundEndState] = useState(null);
   const [launchPosition, setLaunchPosition] = useState({ x: GAME_CONFIG.CANVAS_WIDTH / 2, y: GAME_CONFIG.CANVAS_HEIGHT - GAME_CONFIG.BALL.RADIUS });
   const [aimPosition, setAimPosition] = useState(null);
-  const [ballSpeed, setBallSpeed] = useState(500);
-  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [speedMultiplier, setSpeedMultiplier] = useState(speedConfig.MULTIPLIERS[0].value);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [scores, setScores] = useState([]);
+  const [scoreSubmitted, setScoreSubmitted] = useState(false);
 
   const gameAreaRef = useRef(null);
   const gameLoopRef = useRef(null);
   const lastFrameTime = useRef(performance.now());
   const isEndingRound = useRef(false);
+  const audioInitialized = useRef(false);
 
-  const initializeGame = useCallback(() => {
+  const initializeGame = useCallback((isRestart = false) => {
     const initialBricks = generateBricks();
     const initialPowerUps = generateInitialPowerUps(initialBricks);
     setWorld({ bricks: initialBricks, powerUps: initialPowerUps });
@@ -48,17 +56,15 @@ const Game = () => {
     setGameState(GAME_STATES.READY);
     setRoundEndState(null);
     isEndingRound.current = false;
+    audioInitialized.current = isRestart ? audioInitialized.current : false;
+    setScoreSubmitted(false);
   }, []);
 
   useEffect(() => {
     preloadSounds(soundList);
+    setScores(getScores());
     initializeGame();
   }, [initializeGame]);
-
-  const handleEnableAudio = () => {
-    enableAudio();
-    setAudioEnabled(true);
-  };
 
   const endRound = useCallback((finalBalls) => {
     console.log(`EndRound Triggered`);
@@ -82,7 +88,7 @@ const Game = () => {
       console.log('EndRound: Continuing, setting signal.');
       const movedPowerUps = movePowerUpsDown(prevWorld.powerUps);
       const newTopRowBricks = generateTopRowBricks(round + 1);
-      const newPowerUps = generateTopRowPowerUps(newTopRowBricks);
+      const newPowerUps = generateTopRowPowerUps(newTopRowBricks, movedDownBricks);
       const finalBricks = [...newTopRowBricks, ...movedDownBricks];
       const finalPowerUps = [...movedPowerUps, ...newPowerUps];
       setRoundEndState('CONTINUE');
@@ -161,6 +167,14 @@ const Game = () => {
             handleBallBounce(newBall, firstCollision.type);
             newBall.x = firstCollision.x;
             newBall.y = firstCollision.y;
+            
+            // 增加一个微小的推回，防止小球嵌入方块
+            const epsilon = 0.1;
+            const norm = Math.sqrt(newBall.vx * newBall.vx + newBall.vy * newBall.vy);
+            if (norm > 0) {
+              newBall.x += (newBall.vx / norm) * epsilon;
+              newBall.y += (newBall.vy / norm) * epsilon;
+            }
           }
 
           const updatedPowerUps = prevWorld.powerUps.map(powerUp => {
@@ -232,14 +246,58 @@ const Game = () => {
     }
   };
 
+  const updateBallSpeeds = (newMultiplier) => {
+    const newSpeed = speedConfig.BASE * newMultiplier;
+    setBalls(prevBalls =>
+      prevBalls.map(ball => {
+        if (!ball.active) return ball;
+        const currentSpeed = Math.sqrt(ball.vx ** 2 + ball.vy ** 2);
+        if (currentSpeed === 0) return ball; // 避免除以零
+        const speedRatio = newSpeed / currentSpeed;
+        return {
+          ...ball,
+          vx: ball.vx * speedRatio,
+          vy: ball.vy * speedRatio,
+        };
+      })
+    );
+  };
+
+  const handleSpeedChange = (newMultiplier) => {
+    setSpeedMultiplier(newMultiplier);
+    if (gameState === GAME_STATES.SHOOTING) {
+      updateBallSpeeds(newMultiplier);
+    }
+  };
+
+  const handleScoreSubmit = (newScore) => {
+    addScore(newScore);
+    setScores(getScores());
+    setScoreSubmitted(true);
+    setShowLeaderboard(true);
+  };
+
+  const handleCloseLeaderboardAndRestart = () => {
+    setShowLeaderboard(false);
+    restartGame();
+  };
+
   const handleClick = (e) => {
     if (gameState !== GAME_STATES.AIMING) return;
+
+    // 在用户第一次点击时自动启用音效
+    if (!audioInitialized.current) {
+      enableAudio();
+      audioInitialized.current = true;
+    }
+
     const rect = gameAreaRef.current.getBoundingClientRect();
     const targetX = e.clientX - rect.left;
     const targetY = e.clientY - rect.top;
 
     playSound('launch');
-    const velocity = calculateLaunchVelocity(launchPosition, {x: targetX, y: targetY}, ballSpeed);
+    const launchSpeed = speedConfig.BASE * speedMultiplier;
+    const velocity = calculateLaunchVelocity(launchPosition, {x: targetX, y: targetY}, launchSpeed);
     for (let i = 0; i < ballCount; i++) {
       setTimeout(() => {
         const newBall = createBall(launchPosition.x, launchPosition.y, velocity.vx, velocity.vy);
@@ -250,7 +308,7 @@ const Game = () => {
     setAimPosition(null);
   };
 
-  const restartGame = () => initializeGame();
+  const restartGame = () => initializeGame(true);
 
   const renderAimLine = () => {
     if (!aimPosition || gameState !== GAME_STATES.AIMING) return null;
@@ -281,50 +339,29 @@ const Game = () => {
           <span>回合: {round}</span>
           <span>小球数: {ballCount}</span>
           <span>下次小球数: {nextBallCount}</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div className="speed-controls">
             <span>速度:</span>
-            <select 
-              value={ballSpeed}
-              onChange={(e) => setBallSpeed(parseInt(e.target.value) || 500)}
-              style={{
-                width: '70px',
-                padding: '4px 8px',
-                background: 'rgba(0, 0, 0, 0.7)',
-                border: '1px solid #00ff00',
-                borderRadius: '4px',
-                color: '#00ff00',
-                fontSize: '14px',
-                textAlign: 'center'
-              }}
-              disabled={gameState === GAME_STATES.SHOOTING}
-            >
-              <option value="500">500</option>
-              <option value="900">900</option>
-              <option value="1300">1300</option>
-            </select>
+            {speedConfig.MULTIPLIERS.map(speed => (
+              <button
+                key={speed.value}
+                className={`speed-button ${speedMultiplier === speed.value ? 'active' : ''}`}
+                onClick={() => handleSpeedChange(speed.value)}
+              >
+                {speed.label}
+              </button>
+            ))}
           </div>
-          {!audioEnabled && (
-            <button 
-              onClick={handleEnableAudio}
-              style={{
-                padding: '6px 12px',
-                background: 'rgba(255, 165, 0, 0.8)',
-                border: '1px solid #ffa500',
-                borderRadius: '4px',
-                color: '#000',
-                fontSize: '12px',
-                cursor: 'pointer',
-                fontWeight: 'bold'
-              }}
-            >
-              启用音效
-            </button>
-          )}
-        </div>
-        {gameState === GAME_STATES.GAME_OVER && (
-          <button className="restart-button" onClick={restartGame}>
-            重新开始
+          <button onClick={() => setShowLeaderboard(true)} className="leaderboard-button">
+            排行榜
           </button>
+        </div>
+        {gameState === GAME_STATES.GAME_OVER && !scoreSubmitted && (
+          <GameOverScreen 
+            round={round}
+            ballCount={ballCount}
+            onSubmit={handleScoreSubmit}
+            onRestart={restartGame}
+          />
         )}
       </div>
       
@@ -358,13 +395,11 @@ const Game = () => {
             zIndex: 15
           }}
         />
-        {gameState === GAME_STATES.GAME_OVER && (
-          <div className="game-over-overlay">
-            <div className="game-over-message">
-              <h2>游戏结束！</h2>
-              <p>坚持了 {round} 回合</p>
-            </div>
-          </div>
+        {showLeaderboard && (
+          <Leaderboard 
+            scores={scores} 
+            onClose={gameState === GAME_STATES.GAME_OVER ? handleCloseLeaderboardAndRestart : () => setShowLeaderboard(false)} 
+          />
         )}
       </div>
     </div>

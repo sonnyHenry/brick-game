@@ -1,14 +1,27 @@
 const audioCache = {};
-let audioEnabled = false;
 let userInteracted = false;
+let audioContext;
 
 /**
  * 启用音效系统（需要用户交互后调用）
  */
 export const enableAudio = () => {
-  audioEnabled = true;
+  if (userInteracted) return;
   userInteracted = true;
-  console.log('音效系统已启用');
+
+  try {
+    if (!audioContext) {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    
+    // 如果音频上下文处于暂停状态，尝试恢复它
+    if (audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+    console.log('音效系统已启用');
+  } catch (error) {
+    console.error('无法初始化音效系统:', error);
+  }
 };
 
 /**
@@ -18,10 +31,9 @@ export const enableAudio = () => {
  * @param {number} volume - 音量 (0-1)
  */
 const createTone = (frequency, duration, volume = 0.1) => {
-  if (!audioEnabled) return;
+  if (!audioContext || !userInteracted) return;
   
   try {
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
     
@@ -80,7 +92,7 @@ export const preloadSounds = (soundList) => {
  */
 export const playSound = (soundName) => {
   if (!userInteracted) {
-    console.log('需要用户交互后才能播放音效');
+    // 在用户首次交互前，静默失败
     return;
   }
 
@@ -111,7 +123,7 @@ export const playSound = (soundName) => {
  * @param {string} soundName - 音效名称
  */
 const playFallbackSound = (soundName) => {
-  if (!audioEnabled) return;
+  if (!audioContext || !userInteracted) return;
   
   const soundMap = {
     'hit_low': () => createTone(200, 100, 0.15),

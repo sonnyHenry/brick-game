@@ -4,6 +4,16 @@ export const GAME_CONFIG = {
   CANVAS_WIDTH: 955,
   CANVAS_HEIGHT: 800,
   
+  // 速度配置
+  SPEED: {
+    BASE: 500,
+    MULTIPLIERS: [
+      { label: '1x', value: 1 },
+      { label: '2x', value: 2 },
+      { label: '3x', value: 3 },
+    ]
+  },
+  
   // 小球配置
   BALL: {
     RADIUS: 10,
@@ -36,7 +46,7 @@ export const GAME_CONFIG = {
     SIZE: 20,
     SPEED: 2,
     COLOR: '#ffff00',
-    SPAWN_CHANCE: 0.04 // 4%的概率生成道具（从10%降低）
+    SPAWN_CHANCE: 0.07 // 7%的概率生成道具（从4%提高）
   },
   
   // 物理常量

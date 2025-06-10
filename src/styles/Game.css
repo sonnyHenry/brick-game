@@ -260,4 +260,64 @@
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
+}
+
+.leaderboard-button {
+  padding: 6px 12px;
+  background: rgba(0, 150, 255, 0.8);
+  border: 1px solid #0096FF;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.leaderboard-button:hover {
+  background: #0096FF;
+  box-shadow: 0 0 10px rgba(0, 150, 255, 0.8);
+  transform: translateY(-2px);
+}
+
+.speed-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  border-radius: 6px;
+  border: 1px solid #333;
+}
+
+.speed-controls > span {
+  font-size: 14px;
+  font-weight: bold;
+  color: #00ff00;
+  padding: 0 4px;
+}
+
+.speed-button {
+  padding: 4px 10px;
+  border: 1px solid #555;
+  background-color: #222;
+  color: #999;
+  font-size: 12px;
+  font-weight: bold;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.speed-button:hover {
+  background-color: #333;
+  color: #fff;
+  border-color: #777;
+}
+
+.speed-button.active {
+  background-color: #00ff00;
+  color: #000;
+  border-color: #00ff00;
+  box-shadow: 0 0 8px rgba(0, 255, 0, 0.7);
 } 

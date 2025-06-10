@@ -9,6 +9,7 @@ import { detectWallCollision, handleBallBounce, detectContinuousCollision, detec
 import { GAME_CONFIG, GAME_STATES, COLLISION_TYPES } from '../utils/constants';
 import { playSound, preloadSounds, enableAudio } from '../utils/audio';
 import { getScores, addScore } from '../utils/leaderboard';
+import { getClampedAimVector } from '../utils/aiming';
 import '../styles/Game.css';
 
 const { SPEED: speedConfig } = GAME_CONFIG;
@@ -312,14 +313,18 @@ const Game = () => {
 
   const renderAimLine = () => {
     if (!aimPosition || gameState !== GAME_STATES.AIMING) return null;
-    const dx = aimPosition.x - launchPosition.x;
-    const dy = aimPosition.y - launchPosition.y;
-    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+    // 使用新的工具函数来获取被限制过的方向向量
+    const clampedVector = getClampedAimVector(launchPosition, aimPosition, 10);
+    
+    // 从修正后的向量计算角度
+    const angle = Math.atan2(clampedVector.dy, clampedVector.dx) * 180 / Math.PI;
+    
     const fixedLength = 150;
     const lineStyle = {
       position: 'absolute',
       left: launchPosition.x,
-      top: launchPosition.y - 1,
+      top: launchPosition.y - 1, // 减去1/2的高度，使其居中
       width: fixedLength,
       height: 2,
       backgroundColor: 'rgba(255, 255, 255, 0.7)',

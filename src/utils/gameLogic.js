@@ -1,4 +1,5 @@
 import { GAME_CONFIG, POWERUP_TYPES } from './constants';
+import { getClampedAimVector } from './aiming';
 
 /**
  * 根据生命值获取砖块颜色
@@ -267,20 +268,17 @@ export function generateTopRowPowerUps(newTopRowBricks, existingBricks = []) {
 
   // 1. 根据新砖块数量决定要生成的道具数量
   const brickCount = newTopRowBricks.length;
-  const minBrickCount = 5; // 对应约40%的密度
-  const maxBrickCount = 9; // 对应约70%的密度
-  const minPowerUps = 1;   // 最少生成1个道具
-  const maxPowerUps = 3;   // 最多生成3个道具
+  const { MIN_BRICK_COUNT, MAX_BRICK_COUNT, MIN_COUNT, MAX_COUNT } = GAME_CONFIG.POWERUP;
 
   let powerUpCount;
-  if (brickCount <= minBrickCount) {
-    powerUpCount = minPowerUps;
-  } else if (brickCount >= maxBrickCount) {
-    powerUpCount = maxPowerUps;
+  if (brickCount <= MIN_BRICK_COUNT) {
+    powerUpCount = MIN_COUNT;
+  } else if (brickCount >= MAX_BRICK_COUNT) {
+    powerUpCount = MAX_COUNT;
   } else {
     // 在最小和最大砖块数之间进行线性插值，并取整
-    const ratio = (brickCount - minBrickCount) / (maxBrickCount - minBrickCount);
-    powerUpCount = Math.round(minPowerUps + (maxPowerUps - minPowerUps) * ratio);
+    const ratio = (brickCount - MIN_BRICK_COUNT) / (MAX_BRICK_COUNT - MIN_BRICK_COUNT);
+    powerUpCount = Math.round(MIN_COUNT + (MAX_COUNT - MIN_COUNT) * ratio);
   }
   
   // 2. 找出所有真正可用的空列
@@ -330,18 +328,11 @@ export function generateTopRowPowerUps(newTopRowBricks, existingBricks = []) {
  * @returns {Object} 速度向量 {vx, vy}
  */
 export function calculateLaunchVelocity(startPos, targetPos, speed) {
-  const dx = targetPos.x - startPos.x;
-  const dy = targetPos.y - startPos.y;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-  
-  // 如果距离过小，则设置一个默认向上发射的速度
-  if (distance < 1) {
-    return { vx: 0, vy: -speed };
-  }
+  const aimVector = getClampedAimVector(startPos, targetPos, 10);
   
   return {
-    vx: (dx / distance) * speed,
-    vy: (dy / distance) * speed
+    vx: aimVector.dx * speed,
+    vy: aimVector.dy * speed,
   };
 }
 

@@ -46,7 +46,12 @@ export const GAME_CONFIG = {
     SIZE: 20,
     SPEED: 2,
     COLOR: '#ffff00',
-    SPAWN_CHANCE: 0.07 // 7%的概率生成道具（从4%提高）
+    SPAWN_CHANCE: 0.07, // 7%的概率生成道具（从4%提高）
+    // 道具生成数量配置
+    MIN_BRICK_COUNT: 5, // 对应约40%密度
+    MAX_BRICK_COUNT: 9, // 对应约70%密度
+    MIN_COUNT: 1,       // 最少1个道具
+    MAX_COUNT: 3        // 最多3个道具
   },
   
   // 物理常量
@@ -81,4 +86,4 @@ export const GAME_STATES = {
 // 道具类型枚举  
 export const POWERUP_TYPES = {
   MULTI_BALL: 'multiBall'
-}; 
+};

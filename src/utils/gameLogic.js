@@ -8,9 +8,23 @@ import { getClampedAimVector } from './aiming';
  */
 export function getBrickColorByHealth(health) {
   const { BRICK } = GAME_CONFIG;
-  // 使用区间划分：每5个生命值为一个区间
-  const colorIndex = Math.floor((health - 1) / 5) % BRICK.COLORS.length;
-  return BRICK.COLORS[colorIndex];
+  let colorIndex;
+
+  if (health <= 50) {
+    // 50及以下，每5个生命值一个区间
+    colorIndex = Math.floor((health - 1) / 5);
+  } else {
+    // 超过50，颜色变化更平缓
+    // 先计算出前50的区间数 (50 / 5 = 10个)
+    const baseIntervals = 10;
+    // 再计算超过50的部分，每10个生命值一个区间
+    const extraIntervals = Math.floor((health - 51) / 10);
+    colorIndex = baseIntervals + extraIntervals;
+  }
+
+  // 使用取模运算确保颜色索引在数组范围内循环
+  const finalIndex = colorIndex % BRICK.COLORS.length;
+  return BRICK.COLORS[finalIndex];
 }
 
 /**
@@ -188,7 +202,7 @@ export function createPowerUp(position, type = POWERUP_TYPES.MULTI_BALL) {
  * @returns {Array} 道具数组
  */
 export function generateInitialPowerUps(bricks) {
-  const { BRICK, CANVAS_HEIGHT } = GAME_CONFIG;
+  const { BRICK, SAFETY_NET } = GAME_CONFIG;
   const occupiedCells = new Set();
 
   bricks.forEach(brick => {
@@ -204,7 +218,7 @@ export function generateInitialPowerUps(bricks) {
         const x = BRICK.OFFSET_LEFT + c * (BRICK.WIDTH + BRICK.PADDING) + (BRICK.WIDTH / 2);
         const y = BRICK.OFFSET_TOP + r * (BRICK.HEIGHT + BRICK.PADDING) + (BRICK.HEIGHT / 2);
 
-        if (y < CANVAS_HEIGHT - 200) {
+        if (y < GAME_CONFIG.CANVAS_HEIGHT - 200) {
             emptyCells.push({ x, y });
         }
       }
@@ -213,7 +227,7 @@ export function generateInitialPowerUps(bricks) {
 
   const shuffled = emptyCells.sort(() => 0.5 - Math.random());
   
-  const count = Math.min(shuffled.length, Math.floor(Math.random() * 3) + 1);
+  const count = Math.min(shuffled.length, SAFETY_NET.MIN_BALLS_BASE);
   const selectedCells = shuffled.slice(0, count);
   
   return selectedCells.map(cell => createPowerUp(cell));
@@ -260,53 +274,63 @@ export function movePowerUpsDown(powerUps) {
  * 在新生成的顶行砖块的空隙中生成新道具
  * @param {Array} newTopRowBricks - 新生成的顶行砖块数组
  * @param {Array} existingBricks - 已经存在的砖块数组
- * @returns {Array} 新的道具数组
+ * @param {number} roundsSinceLastPowerUp - 距离上个道具生成的回合数
+ * @returns {Object} 包含新道具数组和是否生成了道具的标志 { newPowerUps: Array, powerUpWasGenerated: boolean }
  */
-export function generateTopRowPowerUps(newTopRowBricks, existingBricks = []) {
-  const { BRICK } = GAME_CONFIG;
+export function generateTopRowPowerUps(newTopRowBricks, existingBricks = [], roundsSinceLastPowerUp = 0) {
+  const { BRICK, POWERUP } = GAME_CONFIG;
   const newPowerUps = [];
 
-  // 1. 根据新砖块数量决定要生成的道具数量
-  const brickCount = newTopRowBricks.length;
-  const { MIN_BRICK_COUNT, MAX_BRICK_COUNT, MIN_COUNT, MAX_COUNT } = GAME_CONFIG.POWERUP;
-
-  let powerUpCount;
-  if (brickCount <= MIN_BRICK_COUNT) {
-    powerUpCount = MIN_COUNT;
-  } else if (brickCount >= MAX_BRICK_COUNT) {
-    powerUpCount = MAX_COUNT;
-  } else {
-    // 在最小和最大砖块数之间进行线性插值，并取整
-    const ratio = (brickCount - MIN_BRICK_COUNT) / (MAX_BRICK_COUNT - MIN_BRICK_COUNT);
-    powerUpCount = Math.round(MIN_COUNT + (MAX_COUNT - MIN_COUNT) * ratio);
-  }
-  
-  // 2. 找出所有真正可用的空列
-  const occupiedCols = new Set();
-  const allBricks = [...newTopRowBricks, ...existingBricks];
-  allBricks.forEach(brick => {
-    // 只考虑屏幕上半部分的砖块
-    if (brick.y < GAME_CONFIG.CANVAS_HEIGHT / 2) {
-      const col = Math.round((brick.x - BRICK.OFFSET_LEFT) / (BRICK.WIDTH + BRICK.PADDING));
-      occupiedCols.add(col);
-    }
+  // 1. 找出顶行被新砖块占用的列
+  const occupiedTopRowCols = new Set();
+  newTopRowBricks.forEach(brick => {
+    // 新砖块必定在顶行
+    const col = Math.round((brick.x - BRICK.OFFSET_LEFT) / (BRICK.WIDTH + BRICK.PADDING));
+    occupiedTopRowCols.add(col);
   });
 
   const availableColumns = [];
   for (let c = 0; c < BRICK.COLS; c++) {
-    if (!occupiedCols.has(c)) {
+    if (!occupiedTopRowCols.has(c)) {
       availableColumns.push(c);
     }
   }
 
-  // 3. 在可用的空列中随机选择位置来放置道具
+  // 如果没有可用的空列，直接返回
+  if (availableColumns.length === 0) {
+    return { newPowerUps: [], powerUpWasGenerated: false };
+  }
+
+  // 2. 决定是否生成道具
+  let shouldSpawn = false;
+  // 强制生成：如果距离上次生成已经达到阈值
+  if (roundsSinceLastPowerUp >= POWERUP.GUARANTEED_SPAWN_ROUNDS) {
+    shouldSpawn = true;
+  } else {
+    // 概率生成：基础概率 + 奖励概率
+    const bonusChance = roundsSinceLastPowerUp * 0.15; // 每过一回合增加15%概率
+    const totalChance = POWERUP.BASE_SPAWN_CHANCE + bonusChance;
+    if (Math.random() < totalChance) {
+      shouldSpawn = true;
+    }
+  }
+
+  // 如果决定不生成，直接返回
+  if (!shouldSpawn) {
+    return { newPowerUps: [], powerUpWasGenerated: false };
+  }
+
+  // 3. 决定生成道具的数量 (当前逻辑简化为只生成1个)
+  const powerUpCount = 1;
+
+  // 4. 在可用的空列中随机选择位置来放置道具
   // 打乱可用列数组
   for (let i = availableColumns.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [availableColumns[i], availableColumns[j]] = [availableColumns[j], availableColumns[i]];
   }
   
-  // 取前N个位置来生成道具，N为计算出的道具数量和可用列数中的较小者
+  // 取前N个位置来生成道具
   const finalPowerUpCount = Math.min(powerUpCount, availableColumns.length);
   for (let i = 0; i < finalPowerUpCount; i++) {
     const col = availableColumns[i];
@@ -317,7 +341,58 @@ export function generateTopRowPowerUps(newTopRowBricks, existingBricks = []) {
     newPowerUps.push(createPowerUp(position));
   }
 
-  return newPowerUps;
+  return { newPowerUps, powerUpWasGenerated: newPowerUps.length > 0 };
+}
+
+/**
+ * 为兜底机制生成指定数量的道具
+ * @param {number} count - 需要生成的道具数量
+ * @param {Array} allBricks - 当前所有的砖块
+ * @returns {Array} - 新生成的道具数组
+ */
+export function generateSafetyNetPowerUps(count, allBricks) {
+    const { BRICK } = GAME_CONFIG;
+    const safetyNetPowerUps = [];
+
+    // 1. 找出顶行被所有砖块占用的列
+    const occupiedTopRowCols = new Set();
+    allBricks.forEach(brick => {
+        // 使用一个小的容差来精确判断砖块是否在顶行
+        if (Math.abs(brick.y - BRICK.OFFSET_TOP) < 1) {
+            const col = Math.round((brick.x - BRICK.OFFSET_LEFT) / (BRICK.WIDTH + BRICK.PADDING));
+            occupiedTopRowCols.add(col);
+        }
+    });
+
+    const availableColumns = [];
+    for (let c = 0; c < BRICK.COLS; c++) {
+        if (!occupiedTopRowCols.has(c)) {
+            availableColumns.push(c);
+        }
+    }
+
+    if (availableColumns.length === 0) {
+        return [];
+    }
+    
+    // 2. 在可用的空列中随机选择位置来放置道具
+    for (let i = availableColumns.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [availableColumns[i], availableColumns[j]] = [availableColumns[j], availableColumns[i]];
+    }
+
+    // 3. 创建道具
+    const finalPowerUpCount = Math.min(count, availableColumns.length);
+    for (let i = 0; i < finalPowerUpCount; i++) {
+        const col = availableColumns[i];
+        const position = {
+            x: BRICK.OFFSET_LEFT + col * (BRICK.WIDTH + BRICK.PADDING) + BRICK.WIDTH / 2,
+            y: BRICK.OFFSET_TOP + BRICK.HEIGHT / 2,
+        };
+        safetyNetPowerUps.push(createPowerUp(position));
+    }
+
+    return safetyNetPowerUps;
 }
 
 /**
@@ -328,7 +403,7 @@ export function generateTopRowPowerUps(newTopRowBricks, existingBricks = []) {
  * @returns {Object} 速度向量 {vx, vy}
  */
 export function calculateLaunchVelocity(startPos, targetPos, speed) {
-  const aimVector = getClampedAimVector(startPos, targetPos, 10);
+  const aimVector = getClampedAimVector(startPos, targetPos);
   
   return {
     vx: aimVector.dx * speed,

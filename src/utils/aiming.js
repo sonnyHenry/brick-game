@@ -1,16 +1,19 @@
+import { GAME_CONFIG } from './constants';
+
 /**
  * 这是一个用于计算和限制瞄准角度的工具模块。
  * 它可以被游戏逻辑和UI组件共用，以确保发射和视觉预览的一致性。
  */
 
 /**
- * 根据起始点、目标点和角度限制，计算出最终合法的瞄准向量。
+ * 根据起始点和目标点，计算出最终合法的瞄准向量。
+ * 角度限制会从GAME_CONFIG中自动获取。
  * @param {Object} startPos - 起始坐标 { x, y }
  * @param {Object} targetPos - 原始目标坐标 { x, y }
- * @param {number} minAngleDeg - 最小角度 (度), 例如 10
  * @returns {Object} - 一个包含合法方向单位向量的对象 { dx, dy }
  */
-export function getClampedAimVector(startPos, targetPos, minAngleDeg) {
+export function getClampedAimVector(startPos, targetPos) {
+  const minAngleDeg = GAME_CONFIG.AIMING.MIN_ANGLE_DEG;
   let dx = targetPos.x - startPos.x;
   let dy = targetPos.y - startPos.y;
 

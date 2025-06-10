@@ -1,6 +1,6 @@
 const audioCache = {};
 let userInteracted = false;
-let audioContext;
+let audioContext = null;
 
 /**
  * 启用音效系统（需要用户交互后调用）
@@ -18,7 +18,7 @@ export const enableAudio = () => {
     if (audioContext.state === 'suspended') {
       audioContext.resume();
     }
-    console.log('音效系统已启用');
+    console.log("音频上下文已启用");
   } catch (error) {
     console.error('无法初始化音效系统:', error);
   }
@@ -45,7 +45,7 @@ const createTone = (frequency, duration, volume = 0.1) => {
     
     gainNode.gain.setValueAtTime(0, audioContext.currentTime);
     gainNode.gain.linearRampToValueAtTime(volume, audioContext.currentTime + 0.01);
-    gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration / 1000);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + duration);
     
     oscillator.start(audioContext.currentTime);
     oscillator.stop(audioContext.currentTime + duration / 1000);
@@ -87,35 +87,29 @@ export const preloadSounds = (soundList) => {
 };
 
 /**
- * 播放一个已加载的音效
- * @param {string} soundName - 在预加载时定义的音效名称
+ * 播放声音。
+ * 如果对应的音频缓冲区存在，则播放它。
+ * 否则，播放一个备用的合成音效。
+ * @param {string} soundName - 要播放的声音的名称（例如 'hit_low'）
  */
 export const playSound = (soundName) => {
-  if (!userInteracted) {
-    // 在用户首次交互前，静默失败
+  if (!audioContext || !userInteracted) {
+    console.warn("音频未启用，无法播放声音。");
     return;
   }
-
-  const audio = audioCache[soundName];
   
-  // 如果音效文件存在且可用，播放音效文件
-  if (audio && audio.readyState >= 2) {
-    try {
-      const audioClone = audio.cloneNode();
-      audioClone.currentTime = 0;
-      audioClone.volume = 0.3;
-      audioClone.play().catch(error => {
-        console.warn(`播放音效失败: ${soundName}`, error);
-        playFallbackSound(soundName);
-      });
-      return;
-    } catch (error) {
-      console.warn(`音效播放错误: ${soundName}`, error);
-    }
-  }
-  
-  // 如果音效文件不可用，播放占位符音调
+  // 由于我们只使用备用音效，直接调用它
   playFallbackSound(soundName);
+};
+
+/**
+ * 停止所有当前正在播放的声音。
+ * 这对于在游戏结束或重置时清理声音很有用。
+ */
+export const stopAllSounds = () => {
+  // 当前实现中，合成音效很短，不需要手动停止。
+  // 如果未来添加了循环的背景音乐，需要在这里实现停止逻辑。
+  console.log("停止所有声音（当前无操作）");
 };
 
 /**

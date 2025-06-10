@@ -4,7 +4,7 @@ import Ball from './Ball';
 import PowerUp from './PowerUp';
 import GameOverScreen from './GameOverScreen';
 import Leaderboard from './Leaderboard';
-import { generateBricks, generateTopRowBricks, moveBricksDown, checkGameOver, generateInitialPowerUps, generateTopRowPowerUps, movePowerUpsDown, calculateLaunchVelocity, createBall, areAllBallsLanded, getLastLandedBallX, cleanupDestroyedBricks, getBrickColorByHealth } from '../utils/gameLogic';
+import { generateBricks, generateTopRowBricks, moveBricksDown, checkGameOver, generateInitialPowerUps, generateTopRowPowerUps, movePowerUpsDown, calculateLaunchVelocity, createBall, areAllBallsLanded, getLastLandedBallX, cleanupDestroyedBricks, getBrickColorByHealth, generateSafetyNetPowerUps } from '../utils/gameLogic';
 import { detectWallCollision, handleBallBounce, detectContinuousCollision, detectPowerUpCollision } from '../utils/collision';
 import { GAME_CONFIG, GAME_STATES, COLLISION_TYPES } from '../utils/constants';
 import { playSound, preloadSounds, enableAudio } from '../utils/audio';
@@ -13,16 +13,6 @@ import { getClampedAimVector } from '../utils/aiming';
 import '../styles/Game.css';
 
 const { SPEED: speedConfig } = GAME_CONFIG;
-
-const soundList = [
-  { name: 'hit_low', src: '/sounds/hit_low.wav' },
-  { name: 'hit_medium', src: '/sounds/hit_medium.wav' },
-  { name: 'hit_high', src: '/sounds/hit_high.wav' },
-  { name: 'bounce', src: '/sounds/bounce.wav' },
-  { name: 'powerup', src: '/sounds/powerup.wav' },
-  { name: 'game_over', src: '/sounds/game_over.wav' },
-  { name: 'launch', src: '/sounds/launch.wav' },
-];
 
 const Game = () => {
   const [world, setWorld] = useState({ bricks: [], powerUps: [] });
@@ -38,6 +28,8 @@ const Game = () => {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [scores, setScores] = useState([]);
   const [scoreSubmitted, setScoreSubmitted] = useState(false);
+  const [roundsSinceLastPowerUp, setRoundsSinceLastPowerUp] = useState(0);
+  const [roundEndSignal, setRoundEndSignal] = useState(null);
 
   const gameAreaRef = useRef(null);
   const gameLoopRef = useRef(null);
@@ -59,43 +51,18 @@ const Game = () => {
     isEndingRound.current = false;
     audioInitialized.current = isRestart ? audioInitialized.current : false;
     setScoreSubmitted(false);
+    setRoundsSinceLastPowerUp(0);
   }, []);
 
   useEffect(() => {
-    preloadSounds(soundList);
     setScores(getScores());
     initializeGame();
   }, [initializeGame]);
 
   const endRound = useCallback((finalBalls) => {
     console.log(`EndRound Triggered`);
-    const newLaunchX = getLastLandedBallX(finalBalls);
-    setLaunchPosition({
-      x: newLaunchX,
-      y: GAME_CONFIG.CANVAS_HEIGHT - GAME_CONFIG.BALL.RADIUS
-    });
-
-    setWorld(prevWorld => {
-      const cleanedBricks = cleanupDestroyedBricks(prevWorld.bricks);
-      const movedDownBricks = moveBricksDown(cleanedBricks);
-
-      if (checkGameOver(movedDownBricks)) {
-        console.log('EndRound: Game Over detected, setting signal.');
-        setRoundEndState('GAME_OVER');
-        const movedPowerUps = movePowerUpsDown(prevWorld.powerUps);
-        return { bricks: movedDownBricks, powerUps: movedPowerUps };
-      }
-
-      console.log('EndRound: Continuing, setting signal.');
-      const movedPowerUps = movePowerUpsDown(prevWorld.powerUps);
-      const newTopRowBricks = generateTopRowBricks(round + 1);
-      const newPowerUps = generateTopRowPowerUps(newTopRowBricks, movedDownBricks);
-      const finalBricks = [...newTopRowBricks, ...movedDownBricks];
-      const finalPowerUps = [...movedPowerUps, ...newPowerUps];
-      setRoundEndState('CONTINUE');
-      return { bricks: finalBricks, powerUps: finalPowerUps };
-    });
-  }, [round]);
+    setRoundEndSignal({ finalBalls });
+  }, []);
 
   const gameLoop = useCallback((currentTime) => {
     if (gameState !== GAME_STATES.SHOOTING) {
@@ -214,27 +181,86 @@ const Game = () => {
   }, [gameState, gameLoop]);
   
   useEffect(() => {
-    if (!roundEndState) return;
+    if (!roundEndSignal) return;
 
-    if (roundEndState === 'GAME_OVER') {
+    const { finalBalls } = roundEndSignal;
+
+    // 1. 更新发射点位置
+    const newLaunchX = getLastLandedBallX(finalBalls);
+    setLaunchPosition({
+      x: newLaunchX,
+      y: GAME_CONFIG.CANVAS_HEIGHT - GAME_CONFIG.BALL.RADIUS
+    });
+
+    // 2. 计算下一回合的砖块和道具
+    const cleanedBricks = cleanupDestroyedBricks(world.bricks);
+    const movedDownBricks = moveBricksDown(cleanedBricks);
+
+    // 检查游戏是否结束
+    if (checkGameOver(movedDownBricks)) {
       console.log("Effect: Game Over");
       playSound('game_over');
-      setGameState(GAME_STATES.GAME_OVER);
-    } else if (roundEndState === 'CONTINUE') {
-      console.log("Effect: Continue to next round");
-      setRound(prev => prev + 1);
-      setNextBallCount(prev => {
-        setBallCount(prev);
-        return prev;
+      setWorld({ 
+        bricks: movedDownBricks, 
+        powerUps: movePowerUpsDown(world.powerUps) 
       });
-      setBalls([]);
-      setTimeout(() => {
-        setGameState(GAME_STATES.READY);
-        isEndingRound.current = false;
-      }, 100);
+      setGameState(GAME_STATES.GAME_OVER);
+      setRoundEndSignal(null); // 重置信号
+      return;
     }
-    setRoundEndState(null);
-  }, [roundEndState]);
+    
+    // 如果游戏继续
+    const movedPowerUps = movePowerUpsDown(world.powerUps);
+    const newTopRowBricks = generateTopRowBricks(round + 1);
+    const { newPowerUps, powerUpWasGenerated } = generateTopRowPowerUps(newTopRowBricks, movedDownBricks, roundsSinceLastPowerUp);
+
+    let safetyNetPowerUps = [];
+    const nextRoundNumber = round + 1;
+
+    // 3. 检查并应用兜底机制
+    if (nextRoundNumber % GAME_CONFIG.SAFETY_NET.GROWTH_INTERVAL === 0) {
+      const { MIN_BALLS_BASE, GROWTH_INTERVAL } = GAME_CONFIG.SAFETY_NET;
+      const minimumBallCount = MIN_BALLS_BASE + Math.floor(nextRoundNumber / GROWTH_INTERVAL);
+      
+      if (nextBallCount < minimumBallCount) {
+        const powerUpsToSpawn = minimumBallCount - nextBallCount;
+        console.log(`[兜底机制触发] 回合 ${nextRoundNumber}: 生成 ${powerUpsToSpawn} 个追赶道具。`);
+        const allCurrentBricks = [...newTopRowBricks, ...movedDownBricks];
+        safetyNetPowerUps = generateSafetyNetPowerUps(powerUpsToSpawn, allCurrentBricks);
+      }
+    }
+
+    // 4. 批量更新所有状态
+    setWorld({
+      bricks: [...newTopRowBricks, ...movedDownBricks],
+      powerUps: [...movedPowerUps, ...newPowerUps, ...safetyNetPowerUps]
+    });
+
+    // 如果常规生成或兜底生成了道具，都重置计数器
+    if (powerUpWasGenerated || safetyNetPowerUps.length > 0) {
+      setRoundsSinceLastPowerUp(0);
+    } else {
+      setRoundsSinceLastPowerUp(prev => prev + 1);
+    }
+
+    setRound(nextRoundNumber);
+    // 移除直接修改小球数的逻辑
+    setNextBallCount(prev => {
+      setBallCount(prev);
+      return prev;
+    });
+    setBalls([]);
+    
+    // 5. 准备下一回合
+    setTimeout(() => {
+      setGameState(GAME_STATES.READY);
+      isEndingRound.current = false;
+    }, 100);
+
+    // 6. 重置信号
+    setRoundEndSignal(null);
+
+  }, [roundEndSignal, round, roundsSinceLastPowerUp, world.bricks, world.powerUps, nextBallCount]);
 
   const handleMouseMove = (e) => {
     if (gameState !== GAME_STATES.READY && gameState !== GAME_STATES.AIMING) return;
@@ -315,17 +341,16 @@ const Game = () => {
     if (!aimPosition || gameState !== GAME_STATES.AIMING) return null;
 
     // 使用新的工具函数来获取被限制过的方向向量
-    const clampedVector = getClampedAimVector(launchPosition, aimPosition, 10);
+    const clampedVector = getClampedAimVector(launchPosition, aimPosition);
     
     // 从修正后的向量计算角度
     const angle = Math.atan2(clampedVector.dy, clampedVector.dx) * 180 / Math.PI;
     
-    const fixedLength = 150;
     const lineStyle = {
       position: 'absolute',
       left: launchPosition.x,
       top: launchPosition.y - 1, // 减去1/2的高度，使其居中
-      width: fixedLength,
+      width: GAME_CONFIG.AIMING.LINE_LENGTH,
       height: 2,
       backgroundColor: 'rgba(255, 255, 255, 0.7)',
       transformOrigin: '0 50%',
@@ -381,13 +406,15 @@ const Game = () => {
           position: 'relative',
           backgroundColor: '#000',
           border: '2px solid #333',
-          cursor: gameState === GAME_STATES.AIMING ? 'crosshair' : 'default'
+          cursor: gameState === GAME_STATES.AIMING ? 'none' : 'default'
         }}
       >
         {world.bricks.map(brick => <Brick key={brick.id} brick={brick} />)}
         {balls.map(ball => <Ball key={ball.id} ball={ball} />)}
         {world.powerUps.map(powerUp => <PowerUp key={powerUp.id} powerUp={powerUp} />)}
         {renderAimLine()}
+        
+        {/* 发射点指示器 */}
         <div
           style={{
             position: 'absolute',
@@ -400,6 +427,7 @@ const Game = () => {
             zIndex: 15
           }}
         />
+        
         {showLeaderboard && (
           <Leaderboard 
             scores={scores} 

@@ -63,11 +63,9 @@ export function generateBricks(round = 1) {
 /**
  * 生成新的顶行砖块
  * @param {number} round - 当前回合数
- * @param {Array} existingBricks - 现有砖块数组，用于计算下一个生命值
- * @param {Array} powerUps - 现有道具数组，用于避免重叠
  * @returns {Array} 新的顶行砖块
  */
-export function generateTopRowBricks(round, existingBricks = [], powerUps = []) {
+export function generateTopRowBricks(round) {
   const bricks = [];
   const { BRICK } = GAME_CONFIG;
   
@@ -75,23 +73,10 @@ export function generateTopRowBricks(round, existingBricks = [], powerUps = []) 
   const minHealth = Math.max(1, round); // 每回合增加1生命值（从每2回合改为每回合）
   const maxHealth = minHealth + 1; // 生命值范围为1
   
-  // 找出被道具占据的列（只检查顶行，即row=0的位置）
-  const powerUpOccupiedCols = new Set();
-  powerUps.forEach(powerUp => {
-    const col = Math.round((powerUp.x - BRICK.OFFSET_LEFT) / (BRICK.WIDTH + BRICK.PADDING));
-    const row = Math.round((powerUp.y - BRICK.OFFSET_TOP) / (BRICK.HEIGHT + BRICK.PADDING));
-    // 只关心会移动到顶行的道具
-    if (row === 0) {
-      powerUpOccupiedCols.add(col);
-    }
-  });
-  
-  // 获取所有可用的列位置（排除道具占据的列）
+  // 由于砖块和道具总是向下移动，顶行一定是空的，因此所有列都可用。
   const availableColumns = [];
   for (let i = 0; i < BRICK.COLS; i++) {
-    if (!powerUpOccupiedCols.has(i)) {
-      availableColumns.push(i);
-    }
+    availableColumns.push(i);
   }
   
   // 随机排列可用的列位置
@@ -100,8 +85,12 @@ export function generateTopRowBricks(round, existingBricks = [], powerUps = []) 
     [availableColumns[i], availableColumns[j]] = [availableColumns[j], availableColumns[i]];
   }
   
-  // 只在一部分可用位置生成砖块
-  const brickCount = Math.floor(availableColumns.length * 0.5); // 50%的可用位置
+  // 确保至少生成一些砖块，但不超过可用位置
+  const minBricks = Math.min(3, availableColumns.length); // 至少生成3个砖块（如果有足够空间）
+  const maxBricks = Math.floor(availableColumns.length * 0.7); // 最多70%的可用位置
+  const brickCount = Math.max(minBricks, maxBricks);
+  
+  console.log(`生成新砖块: 可用列=${availableColumns.length}, 生成数量=${brickCount}, 回合=${round}`);
   
   for (let i = 0; i < brickCount; i++) {
     const col = availableColumns[i];
@@ -145,11 +134,31 @@ export function moveBricksDown(bricks) {
  * @returns {boolean} 是否游戏结束
  */
 export function checkGameOver(bricks) {
-  const bottomThreshold = GAME_CONFIG.CANVAS_HEIGHT - GAME_CONFIG.BALL.RADIUS * 2; // 游戏结束的阈值调整到发射点上方
+  const bottomThreshold = GAME_CONFIG.CANVAS_HEIGHT - 10; // 调整安全距离到80像素，给发射区域留出合理空间
   
-  return bricks.some(brick => 
-    !brick.destroyed && brick.y + brick.height >= bottomThreshold
-  );
+  // 找到所有活跃砖块
+  const activeBricks = bricks.filter(brick => !brick.destroyed);
+  
+  if (activeBricks.length === 0) {
+    return false; // 没有砖块时不结束游戏
+  }
+  
+  // 检查是否有砖块超过底部阈值
+  const gameOver = activeBricks.some(brick => {
+    const brickBottom = brick.y + GAME_CONFIG.BRICK.HEIGHT;
+    return brickBottom >= bottomThreshold;
+  });
+  
+  if (gameOver) {
+    console.log('游戏结束！砖块到达底部！');
+    // 打印最低砖块信息
+    const lowestBrick = activeBricks.reduce((lowest, brick) => 
+      brick.y > lowest.y ? brick : lowest
+    );
+    console.log(`最低砖块: y=${lowestBrick.y}, 底部=${lowestBrick.y + GAME_CONFIG.BRICK.HEIGHT}, 阈值=${bottomThreshold}`);
+  }
+  
+  return gameOver;
 }
 
 /**
@@ -233,11 +242,15 @@ export function movePowerUpsDown(powerUps) {
   const { BRICK, CANVAS_HEIGHT } = GAME_CONFIG;
   return powerUps
     .filter(powerUp => !powerUp.collected) // 在移动前，先过滤掉已收集的道具
-    .map(powerUp => ({
-      ...powerUp,
-      y: powerUp.y + BRICK.HEIGHT + BRICK.PADDING,
-    }))
-    .filter(powerUp => powerUp.y < CANVAS_HEIGHT - 50); // 移除掉出屏幕的道具
+    .map(powerUp => {
+      const newY = powerUp.y + BRICK.HEIGHT + BRICK.PADDING;
+      // 确保道具移动距离与砖块移动距离完全一致
+      return {
+        ...powerUp,
+        y: newY,
+      };
+    })
+    .filter(powerUp => powerUp.y < CANVAS_HEIGHT - 100); // 移除超出游戏区域的道具
 }
 
 /**
@@ -277,14 +290,18 @@ export function generateTopRowPowerUps(newTopRowBricks) {
  * 计算发射角度
  * @param {Object} startPos - 起始位置 {x, y}
  * @param {Object} targetPos - 目标位置 {x, y}
+ * @param {number} speed - 小球速度
  * @returns {Object} 速度向量 {vx, vy}
  */
-export function calculateLaunchVelocity(startPos, targetPos) {
+export function calculateLaunchVelocity(startPos, targetPos, speed) {
   const dx = targetPos.x - startPos.x;
   const dy = targetPos.y - startPos.y;
   const distance = Math.sqrt(dx * dx + dy * dy);
   
-  const speed = GAME_CONFIG.BALL.SPEED;
+  // 如果距离过小，则设置一个默认向上发射的速度
+  if (distance < 1) {
+    return { vx: 0, vy: -speed };
+  }
   
   return {
     vx: (dx / distance) * speed,
@@ -331,15 +348,33 @@ export function areAllBallsLanded(balls) {
  * @returns {number} 最后一个小球的x坐标
  */
 export function getLastLandedBallX(balls) {
-  // 从所有小球中找到最后一个小球的位置
-  const validBalls = balls.filter(ball => ball.x > 0 && ball.x < GAME_CONFIG.CANVAS_WIDTH);
+  console.log(`所有球状态:`, balls.map(b => ({ x: b.x, active: b.active, landingTime: b.landingTime })));
   
-  if (validBalls.length === 0) {
-    return GAME_CONFIG.CANVAS_WIDTH / 2; // 默认中心位置
+  // 只考虑已经落地（不活跃）且在有效范围内的球
+  const landedBalls = balls.filter(ball => 
+    !ball.active && // 球已经停止
+    ball.x >= GAME_CONFIG.BALL.RADIUS && 
+    ball.x <= GAME_CONFIG.CANVAS_WIDTH - GAME_CONFIG.BALL.RADIUS &&
+    ball.y >= GAME_CONFIG.CANVAS_HEIGHT - GAME_CONFIG.BALL.RADIUS - 50 // 确保球在底部附近
+  );
+  
+  console.log(`落地的球:`, landedBalls.map(b => ({ x: b.x, y: b.y, landingTime: b.landingTime })));
+  
+  if (landedBalls.length === 0) {
+    console.log(`没有找到有效的落地球，使用默认位置`);
+    return GAME_CONFIG.CANVAS_WIDTH / 2;
   }
   
-  // 返回最后一个小球的位置（数组中的最后一个元素）
-  return validBalls[validBalls.length - 1].x;
+  // 找到落地时间最晚的球
+  const lastLandedBall = landedBalls.reduce((last, current) => {
+    if (!last.landingTime) return current;
+    if (!current.landingTime) return last;
+    return current.landingTime > last.landingTime ? current : last;
+  });
+  
+  console.log(`选择最后落地的球位置: x=${lastLandedBall.x}`);
+  
+  return lastLandedBall.x;
 }
 
 /**

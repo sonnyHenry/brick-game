@@ -7,7 +7,6 @@ export const GAME_CONFIG = {
   // 小球配置
   BALL: {
     RADIUS: 10,
-    SPEED: 3,
     COLOR: '#00ff00',
     SHADOW_BLUR: 15
   },

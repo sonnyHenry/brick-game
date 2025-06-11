@@ -1,4 +1,4 @@
-import { GAME_CONFIG, POWERUP_TYPES } from './constants';
+import { GAME_CONFIG, POWERUP_TYPES, DIFFICULTY_SETTINGS } from './constants';
 import { getClampedAimVector } from './aiming';
 
 /**
@@ -80,12 +80,13 @@ export function generateBricks(round = 1) {
  * @param {number} round - 当前回合数
  * @returns {Array} 新的顶行砖块
  */
-export function generateTopRowBricks(round) {
+export function generateTopRowBricks(round, difficulty) {
   const bricks = [];
   const { BRICK } = GAME_CONFIG;
+  const { BRICK_HEALTH_INTERVAL } = DIFFICULTY_SETTINGS[difficulty];
   
-  // 新的生命值逻辑：以3个回合为一个区间，每进入一个新区间，生命值范围整体提升
-  const healthIntervalIndex = Math.floor((round - 1) / 3);
+  // 新的生命值逻辑：以N个回合为一个区间，每进入一个新区间，生命值范围整体提升
+  const healthIntervalIndex = Math.floor((round - 1) / BRICK_HEALTH_INTERVAL);
   const minHealth = healthIntervalIndex * 5 + 1;
   const maxHealth = minHealth + 4;
   
@@ -199,10 +200,12 @@ export function createPowerUp(position, type = POWERUP_TYPES.MULTI_BALL) {
 /**
  * 在初始砖块布局的空隙中生成道具
  * @param {Array} bricks - 当前砖块数组
+ * @param {string} difficulty - 当前游戏难度
  * @returns {Array} 道具数组
  */
-export function generateInitialPowerUps(bricks) {
-  const { BRICK, SAFETY_NET } = GAME_CONFIG;
+export function generateInitialPowerUps(bricks, difficulty) {
+  const { BRICK } = GAME_CONFIG;
+  const { MIN_BALLS_BASE } = DIFFICULTY_SETTINGS[difficulty].SAFETY_NET;
   const occupiedCells = new Set();
 
   bricks.forEach(brick => {
@@ -227,7 +230,7 @@ export function generateInitialPowerUps(bricks) {
 
   const shuffled = emptyCells.sort(() => 0.5 - Math.random());
   
-  const count = Math.min(shuffled.length, SAFETY_NET.MIN_BALLS_BASE);
+  const count = Math.min(shuffled.length, MIN_BALLS_BASE);
   const selectedCells = shuffled.slice(0, count);
   
   return selectedCells.map(cell => createPowerUp(cell));
@@ -277,8 +280,9 @@ export function movePowerUpsDown(powerUps) {
  * @param {number} roundsSinceLastPowerUp - 距离上个道具生成的回合数
  * @returns {Object} 包含新道具数组和是否生成了道具的标志 { newPowerUps: Array, powerUpWasGenerated: boolean }
  */
-export function generateTopRowPowerUps(newTopRowBricks, existingBricks = [], roundsSinceLastPowerUp = 0) {
-  const { BRICK, POWERUP } = GAME_CONFIG;
+export function generateTopRowPowerUps(newTopRowBricks, existingBricks = [], roundsSinceLastPowerUp = 0, difficulty) {
+  const { BRICK } = GAME_CONFIG;
+  const { POWERUP_GUARANTEED_SPAWN_ROUNDS, POWERUP_BASE_SPAWN_CHANCE } = DIFFICULTY_SETTINGS[difficulty];
   const newPowerUps = [];
 
   // 1. 找出顶行被新砖块占用的列
@@ -304,12 +308,12 @@ export function generateTopRowPowerUps(newTopRowBricks, existingBricks = [], rou
   // 2. 决定是否生成道具
   let shouldSpawn = false;
   // 强制生成：如果距离上次生成已经达到阈值
-  if (roundsSinceLastPowerUp >= POWERUP.GUARANTEED_SPAWN_ROUNDS) {
+  if (roundsSinceLastPowerUp >= POWERUP_GUARANTEED_SPAWN_ROUNDS) {
     shouldSpawn = true;
   } else {
     // 概率生成：基础概率 + 奖励概率
     const bonusChance = roundsSinceLastPowerUp * 0.15; // 每过一回合增加15%概率
-    const totalChance = POWERUP.BASE_SPAWN_CHANCE + bonusChance;
+    const totalChance = POWERUP_BASE_SPAWN_CHANCE + bonusChance;
     if (Math.random() < totalChance) {
       shouldSpawn = true;
     }

@@ -17,19 +17,19 @@ export const getScores = () => {
 
 /**
  * 添加一条新的分数记录
- * @param {Object} newScore - 新的分数对象 { name, round, ballCount }
+ * @param {object} newScore - 新分数对象，例如 { name: '玩家', score: 100, difficulty: '困难' }
  * @returns {Array} 更新后的分数数组
  */
 export const addScore = (newScore) => {
   try {
     const scores = getScores();
-    const scoreEntry = {
+    const scoreData = {
       ...newScore,
       id: `${Date.now()}-${newScore.name}`,
       date: new Date().toISOString()
     };
     
-    scores.push(scoreEntry);
+    scores.push(scoreData);
     
     // 按回合数降序排序，如果回合数相同，则按小球数降序
     scores.sort((a, b) => {

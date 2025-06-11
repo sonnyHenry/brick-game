@@ -4,9 +4,10 @@ import Ball from './Ball';
 import PowerUp from './PowerUp';
 import GameOverScreen from './GameOverScreen';
 import Leaderboard from './Leaderboard';
+import StartScreen from './StartScreen';
 import { generateBricks, generateTopRowBricks, moveBricksDown, checkGameOver, generateInitialPowerUps, generateTopRowPowerUps, movePowerUpsDown, calculateLaunchVelocity, createBall, areAllBallsLanded, getLastLandedBallX, cleanupDestroyedBricks, getBrickColorByHealth, generateSafetyNetPowerUps } from '../utils/gameLogic';
 import { detectWallCollision, handleBallBounce, detectContinuousCollision, detectPowerUpCollision } from '../utils/collision';
-import { GAME_CONFIG, GAME_STATES, COLLISION_TYPES } from '../utils/constants';
+import { GAME_CONFIG, GAME_STATES, COLLISION_TYPES, DIFFICULTIES, DIFFICULTY_SETTINGS } from '../utils/constants';
 import { playSound, preloadSounds, enableAudio } from '../utils/audio';
 import { getScores, addScore } from '../utils/leaderboard';
 import { getClampedAimVector } from '../utils/aiming';
@@ -14,22 +15,26 @@ import '../styles/Game.css';
 
 const { SPEED: speedConfig } = GAME_CONFIG;
 
+GAME_STATES.PRE_GAME = 'preGame';
+
 const Game = () => {
   const [world, setWorld] = useState({ bricks: [], powerUps: [] });
   const [balls, setBalls] = useState([]);
   const [round, setRound] = useState(1);
   const [ballCount, setBallCount] = useState(1);
   const [nextBallCount, setNextBallCount] = useState(1);
-  const [gameState, setGameState] = useState(GAME_STATES.READY);
-  const [roundEndState, setRoundEndState] = useState(null);
+  const [gameState, setGameState] = useState(GAME_STATES.PRE_GAME);
+  const [difficulty, setDifficulty] = useState(null);
+  const [roundEndSignal, setRoundEndSignal] = useState(null);
+
   const [launchPosition, setLaunchPosition] = useState({ x: GAME_CONFIG.CANVAS_WIDTH / 2, y: GAME_CONFIG.CANVAS_HEIGHT - GAME_CONFIG.BALL.RADIUS });
   const [aimPosition, setAimPosition] = useState(null);
-  const [speedMultiplier, setSpeedMultiplier] = useState(speedConfig.MULTIPLIERS[0].value);
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [speedMultiplier, setSpeedMultiplier] = useState(speedConfig.DEFAULT);
+
   const [scores, setScores] = useState([]);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [scoreSubmitted, setScoreSubmitted] = useState(false);
   const [roundsSinceLastPowerUp, setRoundsSinceLastPowerUp] = useState(0);
-  const [roundEndSignal, setRoundEndSignal] = useState(null);
 
   const gameAreaRef = useRef(null);
   const gameLoopRef = useRef(null);
@@ -37,27 +42,38 @@ const Game = () => {
   const isEndingRound = useRef(false);
   const audioInitialized = useRef(false);
 
-  const initializeGame = useCallback((isRestart = false) => {
+  const initializeGame = useCallback(() => {
+    if (!difficulty) return;
+
     const initialBricks = generateBricks();
-    const initialPowerUps = generateInitialPowerUps(initialBricks);
+    const initialPowerUps = generateInitialPowerUps(initialBricks, difficulty);
+
     setWorld({ bricks: initialBricks, powerUps: initialPowerUps });
     setBalls([]);
     setRound(1);
-    setBallCount(1);
-    setNextBallCount(1);
+    const { MIN_BALLS_BASE } = DIFFICULTY_SETTINGS[difficulty].SAFETY_NET;
+    const initialBallCount = MIN_BALLS_BASE;
+    setBallCount(initialBallCount);
+    setNextBallCount(initialBallCount);
     setLaunchPosition({ x: GAME_CONFIG.CANVAS_WIDTH / 2, y: GAME_CONFIG.CANVAS_HEIGHT - GAME_CONFIG.BALL.RADIUS - 5 });
     setGameState(GAME_STATES.READY);
-    setRoundEndState(null);
+    setRoundEndSignal(null);
     isEndingRound.current = false;
-    audioInitialized.current = isRestart ? audioInitialized.current : false;
+    audioInitialized.current = false;
     setScoreSubmitted(false);
     setRoundsSinceLastPowerUp(0);
-  }, []);
-
-  useEffect(() => {
     setScores(getScores());
-    initializeGame();
-  }, [initializeGame]);
+  }, [difficulty]);
+  
+  const handleStartGame = (selectedDifficulty) => {
+    setDifficulty(selectedDifficulty);
+  };
+  
+  useEffect(() => {
+    if (difficulty) {
+      initializeGame();
+    }
+  }, [difficulty, initializeGame]);
 
   const endRound = useCallback((finalBalls) => {
     console.log(`EndRound Triggered`);
@@ -211,15 +227,16 @@ const Game = () => {
     
     // 如果游戏继续
     const movedPowerUps = movePowerUpsDown(world.powerUps);
-    const newTopRowBricks = generateTopRowBricks(round + 1);
-    const { newPowerUps, powerUpWasGenerated } = generateTopRowPowerUps(newTopRowBricks, movedDownBricks, roundsSinceLastPowerUp);
+    const newTopRowBricks = generateTopRowBricks(round + 1, difficulty);
+    const { newPowerUps, powerUpWasGenerated } = generateTopRowPowerUps(newTopRowBricks, movedDownBricks, roundsSinceLastPowerUp, difficulty);
 
     let safetyNetPowerUps = [];
     const nextRoundNumber = round + 1;
+    const difficultySettings = DIFFICULTY_SETTINGS[difficulty];
 
     // 3. 检查并应用兜底机制
-    if (nextRoundNumber % GAME_CONFIG.SAFETY_NET.GROWTH_INTERVAL === 0) {
-      const { MIN_BALLS_BASE, GROWTH_INTERVAL } = GAME_CONFIG.SAFETY_NET;
+    if (nextRoundNumber % difficultySettings.SAFETY_NET.GROWTH_INTERVAL === 0) {
+      const { MIN_BALLS_BASE, GROWTH_INTERVAL } = difficultySettings.SAFETY_NET;
       const minimumBallCount = MIN_BALLS_BASE + Math.floor(nextRoundNumber / GROWTH_INTERVAL);
       
       if (nextBallCount < minimumBallCount) {
@@ -236,7 +253,6 @@ const Game = () => {
       powerUps: [...movedPowerUps, ...newPowerUps, ...safetyNetPowerUps]
     });
 
-    // 如果常规生成或兜底生成了道具，都重置计数器
     if (powerUpWasGenerated || safetyNetPowerUps.length > 0) {
       setRoundsSinceLastPowerUp(0);
     } else {
@@ -244,7 +260,6 @@ const Game = () => {
     }
 
     setRound(nextRoundNumber);
-    // 移除直接修改小球数的逻辑
     setNextBallCount(prev => {
       setBallCount(prev);
       return prev;
@@ -260,7 +275,7 @@ const Game = () => {
     // 6. 重置信号
     setRoundEndSignal(null);
 
-  }, [roundEndSignal, round, roundsSinceLastPowerUp, world.bricks, world.powerUps, nextBallCount]);
+  }, [roundEndSignal, round, roundsSinceLastPowerUp, world.bricks, world.powerUps, nextBallCount, difficulty]);
 
   const handleMouseMove = (e) => {
     if (gameState !== GAME_STATES.READY && gameState !== GAME_STATES.AIMING) return;
@@ -297,8 +312,8 @@ const Game = () => {
     }
   };
 
-  const handleScoreSubmit = (newScore) => {
-    addScore(newScore);
+  const handleScoreSubmit = (name) => {
+    addScore({ name, score: round, difficulty });
     setScores(getScores());
     setScoreSubmitted(true);
     setShowLeaderboard(true);
@@ -335,7 +350,10 @@ const Game = () => {
     setAimPosition(null);
   };
 
-  const restartGame = () => initializeGame(true);
+  const restartGame = () => {
+    setDifficulty(null);
+    setGameState(GAME_STATES.PRE_GAME);
+  };
 
   const renderAimLine = () => {
     if (!aimPosition || gameState !== GAME_STATES.AIMING) return null;
@@ -364,77 +382,81 @@ const Game = () => {
 
   return (
     <div className="game-container">
-      <div className="game-header">
-        <div className="game-stats">
-          <span>回合: {round}</span>
-          <span>小球数: {ballCount}</span>
-          <span>下次小球数: {nextBallCount}</span>
-          <div className="speed-controls">
-            <span>速度:</span>
-            {speedConfig.MULTIPLIERS.map(speed => (
-              <button
-                key={speed.value}
-                className={`speed-button ${speedMultiplier === speed.value ? 'active' : ''}`}
-                onClick={() => handleSpeedChange(speed.value)}
-              >
-                {speed.label}
-              </button>
-            ))}
-          </div>
-          <button onClick={() => setShowLeaderboard(true)} className="leaderboard-button">
-            排行榜
-          </button>
-        </div>
-        {gameState === GAME_STATES.GAME_OVER && !scoreSubmitted && (
-          <GameOverScreen 
-            round={round}
-            ballCount={ballCount}
-            onSubmit={handleScoreSubmit}
-            onRestart={restartGame}
-          />
-        )}
-      </div>
+      {gameState === GAME_STATES.PRE_GAME && <StartScreen onStartGame={handleStartGame} />}
       
-      <div 
-        ref={gameAreaRef}
-        className="game-area"
-        onMouseMove={handleMouseMove}
-        onClick={handleClick}
-        style={{
-          width: GAME_CONFIG.CANVAS_WIDTH,
-          height: GAME_CONFIG.CANVAS_HEIGHT,
-          position: 'relative',
-          backgroundColor: '#000',
-          border: '2px solid #333',
-          cursor: gameState === GAME_STATES.AIMING ? 'none' : 'default'
-        }}
-      >
-        {world.bricks.map(brick => <Brick key={brick.id} brick={brick} />)}
-        {balls.map(ball => <Ball key={ball.id} ball={ball} />)}
-        {world.powerUps.map(powerUp => <PowerUp key={powerUp.id} powerUp={powerUp} />)}
-        {renderAimLine()}
-        
-        {/* 发射点指示器 */}
-        <div
-          style={{
-            position: 'absolute',
-            left: launchPosition.x - 5,
-            top: launchPosition.y - 5,
-            width: 10,
-            height: 10,
-            backgroundColor: 'white',
-            borderRadius: '50%',
-            zIndex: 15
-          }}
-        />
-        
-        {showLeaderboard && (
-          <Leaderboard 
-            scores={scores} 
-            onClose={gameState === GAME_STATES.GAME_OVER ? handleCloseLeaderboardAndRestart : () => setShowLeaderboard(false)} 
-          />
-        )}
-      </div>
+      {gameState !== GAME_STATES.PRE_GAME && (
+        <>
+          <div className="game-header">
+            <div className="game-stats">
+              <span>回合: {round}</span>
+              <span>小球数: {ballCount}</span>
+              <span>下次小球数: {nextBallCount}</span>
+              <span>难度: {difficulty}</span>
+              <div className="speed-controls">
+                <span>速度:</span>
+                {speedConfig.MULTIPLIERS.map(speed => (
+                  <button
+                    key={speed.value}
+                    className={`speed-button ${speedMultiplier === speed.value ? 'active' : ''}`}
+                    onClick={() => handleSpeedChange(speed.value)}
+                  >
+                    {speed.label}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setShowLeaderboard(true)} className="leaderboard-button">
+                排行榜
+              </button>
+            </div>
+            {gameState === GAME_STATES.GAME_OVER && !scoreSubmitted && (
+              <GameOverScreen 
+                round={round}
+                ballCount={ballCount}
+                onSubmit={handleScoreSubmit}
+                onRestart={restartGame}
+              />
+            )}
+          </div>
+          
+          <div 
+            ref={gameAreaRef}
+            className="game-area"
+            onMouseMove={handleMouseMove}
+            onClick={handleClick}
+            style={{
+              width: GAME_CONFIG.CANVAS_WIDTH,
+              height: GAME_CONFIG.CANVAS_HEIGHT,
+              position: 'relative',
+              backgroundColor: '#000',
+              border: '2px solid #333',
+              cursor: gameState === GAME_STATES.AIMING ? 'none' : 'default'
+            }}
+          >
+            {world.bricks.map(brick => <Brick key={brick.id} brick={brick} />)}
+            {balls.map(ball => <Ball key={ball.id} ball={ball} />)}
+            {world.powerUps.map(powerUp => <PowerUp key={powerUp.id} powerUp={powerUp} />)}
+            {renderAimLine()}
+            <div
+              style={{
+                position: 'absolute',
+                left: launchPosition.x - 5,
+                top: launchPosition.y - 5,
+                width: 10,
+                height: 10,
+                backgroundColor: 'white',
+                borderRadius: '50%',
+                zIndex: 15
+              }}
+            />
+            {showLeaderboard && (
+              <Leaderboard 
+                scores={scores} 
+                onClose={gameState === GAME_STATES.GAME_OVER ? restartGame : () => setShowLeaderboard(false)} 
+              />
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 };

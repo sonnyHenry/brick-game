@@ -14,28 +14,17 @@ const Leaderboard = ({ scores, onClose }) => {
         <h2>排行榜</h2>
         <button onClick={onClose} className="close-button">×</button>
         {scores.length > 0 ? (
-          <table>
-            <thead>
-              <tr>
-                <th>排名</th>
-                <th>姓名</th>
-                <th>回合</th>
-                <th>小球数</th>
-                <th>日期</th>
-              </tr>
-            </thead>
-            <tbody>
-              {scores.map((score, index) => (
-                <tr key={score.id}>
-                  <td>{index + 1}</td>
-                  <td>{score.name}</td>
-                  <td>{score.round}</td>
-                  <td>{score.ballCount}</td>
-                  <td>{formatDate(score.date)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ul>
+            {scores.map((score, index) => (
+              <li key={score.id || index} className="leaderboard-item">
+                <span className="rank">{index + 1}.</span>
+                <span className="name">{score.name}</span>
+                <span className="difficulty">{score.difficulty}</span>
+                <span className="score">{score.score} 回合</span>
+                <span className="date">{formatDate(score.date)}</span>
+              </li>
+            ))}
+          </ul>
         ) : (
           <p>还没有记录，快来创造第一个吧！</p>
         )}

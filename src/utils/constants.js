@@ -7,6 +7,7 @@ export const GAME_CONFIG = {
   // 速度配置
   SPEED: {
     BASE: 500,
+    DEFAULT: 1, // 默认速度倍率
     MULTIPLIERS: [
       { label: '1x', value: 1 },
       { label: '2x', value: 2 },
@@ -50,15 +51,6 @@ export const GAME_CONFIG = {
     SIZE: 20,
     SPEED: 2,
     COLOR: '#ffff00',
-    SPAWN_CHANCE: 0.07, // 7%的概率生成道具（从4%提高）
-    // 道具生成数量配置
-    MIN_BRICK_COUNT: 5, // 对应约40%密度
-    MAX_BRICK_COUNT: 9, // 对应约70%密度
-    MIN_COUNT: 2,       // 最少1个道具
-    MAX_COUNT: 4,        // 最多3个道具
-    // 新增：道具生成一致性配置
-    GUARANTEED_SPAWN_ROUNDS: 3, // 每隔3回合强制生成一个道具
-    BASE_SPAWN_CHANCE: 0.35 // 基础生成概率 (35%)
   },
   
   // 瞄准配置
@@ -67,18 +59,48 @@ export const GAME_CONFIG = {
     LINE_LENGTH: 300   // 瞄准线的像素长度
   },
   
-  // 兜底机制配置
-  SAFETY_NET: {
-    GROWTH_INTERVAL: 4, // 每隔4个回合，最低小球数+1，并进行一次检查
-    MIN_BALLS_BASE: 3  // 游戏初始道具数，及兜底机制的基础小球数
-  },
-  
   // 物理常量
   PHYSICS: {
     GRAVITY: 0,
     FRICTION: 1,
     BOUNCE_DAMPING: 1
   }
+};
+
+// 游戏难度常量
+export const DIFFICULTIES = {
+  MEDIUM: '中等',
+  HARD: '困难',
+};
+
+// 各难度下的详细配置
+export const DIFFICULTY_SETTINGS = {
+  [DIFFICULTIES.MEDIUM]: {
+    // 砖块生命值每4回合提升一次
+    BRICK_HEALTH_INTERVAL: 4,
+    // 每2回合保底1个道具
+    POWERUP_GUARANTEED_SPAWN_ROUNDS: 2,
+    // 道具基础生成率50%
+    POWERUP_BASE_SPAWN_CHANCE: 0.5,
+    // 每3回合检查一次小球数，基础值为3
+    SAFETY_NET: {
+      GROWTH_INTERVAL: 3,
+      MIN_BALLS_BASE: 3,
+    },
+  },
+  [DIFFICULTIES.HARD]: {
+    // 砖块生命值每3回合提升一次
+    BRICK_HEALTH_INTERVAL: 3,
+    // 每3回合保底1个道具
+    POWERUP_GUARANTEED_SPAWN_ROUNDS: 3,
+    // 道具基础生成率35%
+    POWERUP_BASE_SPAWN_CHANCE: 0.35,
+    // 每4回合检查一次小球数，基础值为3
+    SAFETY_NET: {
+      GROWTH_INTERVAL: 4,
+      MIN_BALLS_BASE: 3,
+    },
+  },
 };
 
 // 碰撞类型枚举

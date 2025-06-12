@@ -51,8 +51,7 @@ const Game = () => {
     setWorld({ bricks: initialBricks, powerUps: initialPowerUps });
     setBalls([]);
     setRound(1);
-    const { MIN_BALLS_BASE } = DIFFICULTY_SETTINGS[difficulty].SAFETY_NET;
-    const initialBallCount = MIN_BALLS_BASE;
+    const initialBallCount = 1; // 强制初始小球为1
     setBallCount(initialBallCount);
     setNextBallCount(initialBallCount);
     setLaunchPosition({ x: GAME_CONFIG.CANVAS_WIDTH / 2, y: GAME_CONFIG.CANVAS_HEIGHT - GAME_CONFIG.BALL.RADIUS - 5 });

@@ -55,6 +55,7 @@ const Game = () => {
     setBallCount(initialBallCount);
     setNextBallCount(initialBallCount);
     setLaunchPosition({ x: GAME_CONFIG.CANVAS_WIDTH / 2, y: GAME_CONFIG.CANVAS_HEIGHT - GAME_CONFIG.BALL.RADIUS - 5 });
+    setSpeedMultiplier(speedConfig.DEFAULT);
     setGameState(GAME_STATES.READY);
     setRoundEndSignal(null);
     isEndingRound.current = false;
@@ -311,8 +312,16 @@ const Game = () => {
     }
   };
 
-  const handleScoreSubmit = (name) => {
-    addScore({ name, score: round, difficulty });
+  const handleScoreSubmit = ({ name, round: roundValue, ballCount: ballCnt }) => {
+    // 统一存储字段：score 用于排行榜展示，round 保留用于排序
+    const scoreEntry = {
+      name,
+      round: roundValue,          // 用于排序
+      ballCount: ballCnt,
+      score: roundValue,          // 兼容旧的 Leaderboard 显示字段
+      difficulty
+    };
+    addScore(scoreEntry);
     setScores(getScores());
     setScoreSubmitted(true);
     setShowLeaderboard(true);

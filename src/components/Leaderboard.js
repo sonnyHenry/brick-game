@@ -18,9 +18,9 @@ const Leaderboard = ({ scores, onClose }) => {
             {scores.map((score, index) => (
               <li key={score.id || index} className="leaderboard-item">
                 <span className="rank">{index + 1}.</span>
-                <span className="name">{score.name}</span>
-                <span className="difficulty">{score.difficulty}</span>
-                <span className="score">{score.score} 回合</span>
+                <span className="name">{String(score.name)}</span>
+                <span className="difficulty">{String(score.difficulty)}</span>
+                <span className="score">{String(score.score)} 回合</span>
                 <span className="date">{formatDate(score.date)}</span>
               </li>
             ))}

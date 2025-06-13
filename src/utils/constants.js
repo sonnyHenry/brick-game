@@ -7,11 +7,11 @@ export const GAME_CONFIG = {
   // 速度配置
   SPEED: {
     BASE: 500,
-    DEFAULT: 1, // 默认速度倍率
+    DEFAULT: 2, // 默认速度倍率
     MULTIPLIERS: [
-      { label: '1x', value: 1 },
       { label: '2x', value: 2 },
       { label: '3x', value: 3 },
+      { label: '4x', value: 4 },
     ]
   },
   
